@@ -28,6 +28,13 @@ int stopTiltAngle  = 180;  // Stopping angle for tilt (servo1)
 int startPanAngle = 0;    // Starting angle for pan (servo2)
 int stopPanAngle  = 180;  // Stopping angle for pan (servo2)
 bool runCommandActive = false;
+bool runTiltOnly = false;
+bool runPanOnly = false;
+
+
+float tiltSpeedDegPerSec = 30.0;
+float panSpeedDegPerSec = 30.0;
+
 
 void setup() {
   Serial.begin(115200);
@@ -50,9 +57,10 @@ void loop() {
   if (SerialBT.available()) {
     String command = SerialBT.readStringUntil('\n'); // Read the incoming command
     command.trim(); // Remove any leading/trailing whitespace
+    command.toLowerCase(); // Convert command to lowercase
 
     // Parse and execute the command
-    if (command.startsWith("TILT")) {
+    if (command.startsWith("tilt")) {
       int angle = command.substring(5).toInt(); // Extract angle value
       if (angle >= 0 && angle <= 180) {
         tiltAngle = angle;
@@ -61,7 +69,7 @@ void loop() {
       } else {
         SerialBT.println("Invalid tilt angle! Use a value between 0 and 180.");
       }
-    } else if (command.startsWith("PAN")) {
+    } else if (command.startsWith("pan")) {
       int angle = command.substring(4).toInt(); // Extract angle value
       if (angle >= 0 && angle <= 180) {
         panAngle = angle;
@@ -70,18 +78,42 @@ void loop() {
       } else {
         SerialBT.println("Invalid pan angle! Use a value between 0 and 180.");
       }
-    } else if (command.startsWith("RUN")) {
+    } else if (command.startsWith("run")) {
       int timeInSeconds = command.substring(4).toInt(); // Extract time value in seconds
       if (timeInSeconds > 0) {
         MOVING_TIME = timeInSeconds * 1000; // Convert to milliseconds
         moveStartTime = millis();
         runCommandActive = true;
+        runTiltOnly = false;
+        runPanOnly = false;
         SerialBT.printf("Running movement for %d seconds\n", timeInSeconds);
       } else {
         SerialBT.println("Invalid time! Use a positive value in seconds.");
       }
+    } else if (command.startsWith("move_tilt")) {
+      int timeInSeconds = command.substring(9).toInt(); // Extract time value in seconds
+      if (timeInSeconds > 0) {
+        MOVING_TIME = timeInSeconds * 1000; // Convert to milliseconds
+        moveStartTime = millis();
+        runCommandActive = false;
+        runTiltOnly = true;
+        SerialBT.printf("Running tilt movement for %d seconds\n", timeInSeconds);
+      } else {
+        SerialBT.println("Invalid time! Use a positive value in seconds.");
+      }
+    } else if (command.startsWith("move_pan")) {
+      int timeInSeconds = command.substring(9).toInt(); // Extract time value in seconds
+      if (timeInSeconds > 0) {
+        MOVING_TIME = timeInSeconds * 1000; // Convert to milliseconds
+        moveStartTime = millis();
+        runCommandActive = false;
+        runPanOnly = true;
+        SerialBT.printf("Running pan movement for %d seconds\n", timeInSeconds);
+      } else {
+        SerialBT.println("Invalid time! Use a positive value in seconds.");
+      }
     } else {
-      SerialBT.println("Unknown command! Use TILT <angle>, PAN <angle>, or RUN <time>.");
+      SerialBT.println("Unknown command! Use tilt <angle>, pan <angle>, run <time>, run_tilt <time>, or run_pan <time>.");
     }
   }
 
@@ -110,6 +142,50 @@ void loop() {
 
       runCommandActive = false; // Stop the run command after one complete cycle
       SerialBT.println("Movement complete.");
+    }
+  }
+
+  if (runTiltOnly) {
+    unsigned long progress = millis() - moveStartTime;  // Time passed since movement started
+
+    if (progress <= MOVING_TIME) {
+      // Calculate the current angle based on the progress for tilt servo
+      long currentTiltAngle = map(progress, 0, MOVING_TIME, startTiltAngle, stopTiltAngle);
+
+      // Set the tilt servo position
+      servo1.write(currentTiltAngle);
+    } else {
+      // When movement is complete, reverse the direction for the next loop
+      delay(500);  // Wait before reversing direction
+      moveStartTime = millis();  // Restart movement timer
+      int tempTilt = startTiltAngle;
+      startTiltAngle = stopTiltAngle;
+      stopTiltAngle = tempTilt;
+
+      runTiltOnly = false; // Stop the run_tilt command after one complete cycle
+      SerialBT.println("Tilt movement complete.");
+    }
+  }
+
+  if (runPanOnly) {
+    unsigned long progress = millis() - moveStartTime;  // Time passed since movement started
+
+    if (progress <= MOVING_TIME) {
+      // Calculate the current angle based on the progress for pan servo
+      long currentPanAngle = map(progress, 0, MOVING_TIME, startPanAngle, stopPanAngle);
+
+      // Set the pan servo position
+      servo2.write(currentPanAngle);
+    } else {
+      // When movement is complete, reverse the direction for the next loop
+      delay(500);  // Wait before reversing direction
+      moveStartTime = millis();  // Restart movement timer
+      int tempPan = startPanAngle;
+      startPanAngle = stopPanAngle;
+      stopPanAngle = tempPan;
+
+      runPanOnly = false; // Stop the run_pan command after one complete cycle
+      SerialBT.println("Pan movement complete.");
     }
   }
 
